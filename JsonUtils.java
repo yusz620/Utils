@@ -1,7 +1,9 @@
+package com.test.commonutil;
 import java.beans.BeanInfo;
 import java.beans.Introspector;
 import java.beans.PropertyDescriptor;
 import java.lang.reflect.Method;
+import java.lang.reflect.Type;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -17,16 +19,16 @@ import net.sf.json.util.CycleDetectionStrategy;
 import net.sf.json.util.PropertyFilter;
 
 import org.apache.commons.beanutils.BeanUtils;
+import org.apache.log4j.Logger;
 
 
 /**
  * @Author: Andy Yu
- * @Version: Created Date：2019年11月25日 下午1:39:52
- * @Description:TODO
+ * @Version: Created Date：2021年11月17日 下午10:39:52
  */
 @SuppressWarnings({ "rawtypes", "unchecked", "deprecation" })
 public class JsonUtils {
-
+	private static Logger logger = Logger.getLogger(JsonUtils.class);
 	/**
 	 * Convert List to Json String
 	 *
@@ -44,7 +46,10 @@ public class JsonUtils {
 	 * @return String
 	 */
 	public static String toJSONString(Object object) {
-		return JSONArray.fromObject(object).toString();
+		JsonConfig jsonConfig = new JsonConfig();
+		jsonConfig.setIgnoreDefaultExcludes(false);
+		jsonConfig.setCycleDetectionStrategy(CycleDetectionStrategy.LENIENT);
+		return JSONObject.fromObject(object, jsonConfig).toString();
 	}
 
 	/***
@@ -67,6 +72,143 @@ public class JsonUtils {
 		return jsonObject.toString();
 	}
 
+	 /**
+	  *
+	  * @param map
+	  * @return jsonString
+     */
+   public static String toJSONString(Map map) {
+	   return JSONObject.fromObject(map).toString();
+   }
+
+	 /**
+     * 数组转换成Array字符串
+     * @return
+     */
+    public static final String listToStringArray(List<?> list,String[] fields) {
+    	StringBuffer json = new StringBuffer();
+    	json.append("[");
+    	  for(int i=0;i<list.size();i++){
+    		   json.append("[");
+    		   Object obj = list.get(i);
+    		   for(int j=0;j<fields.length;j++){
+    			   if(j!=0){
+    				   json.append(",");
+    			   }
+    			   if(fields[j]==null ||"".endsWith(fields[j].trim())){
+    				   json.append("''");
+    				   continue;
+    			   }
+    			   String methodName = "get"+ fields[j].substring(0, 1).toUpperCase()+ fields[j].substring(1);
+    			   Method method = null;
+    			   try {
+    				   method = obj.getClass().getMethod(methodName,new Class[] {});
+				   } catch (Exception e) {
+					  logger.error(e.getMessage());
+				   }
+
+    			   Object object=null;
+    			   try {
+    				   object=method.invoke(obj, new Object[] {});
+    			   } catch (Exception e) {
+    				   logger.error(e.getMessage());
+    			   }
+    			   if(null!=object){
+    				   json.append("'"+object+"'");
+    			   }else{
+    				  json.append("''");
+    			   }
+    		   }
+    		   if(i<list.size()-1){
+    			   json.append("],");
+    		   }else{
+    			   json.append("]");
+    		   }
+    	  }
+    	json.append("]");
+    	return json.toString();
+    }
+
+	public static String toJSONString(List bean, String[] fields,boolean removeDuplicate) {
+		JSONArray jo = new JSONArray();
+		Map keyValuePairs= new HashMap<>();
+		if(fields!=null && fields.length!=0) {
+			for(String field : fields) {
+				for(Object obj:bean) {
+					JSONObject js = new JSONObject();
+					String valueGetter = "get"+ field.substring(0, 1).toUpperCase()	+ field.substring(1);
+					Object value = "";
+					try {
+						value=obj.getClass().getDeclaredMethod(valueGetter).invoke(obj);
+					} catch (Exception e) {
+						logger.error(e.getMessage());
+					}
+					js.put(field, value);
+
+					if(removeDuplicate) {
+						if(keyValuePairs.get(field+value)==null) {
+							jo.add(js);
+							keyValuePairs.put(field+value,field+value);
+						}
+					}else {
+						jo.add(js);
+					}
+				}
+			}
+
+		}else {
+			return toJSONString(bean, removeDuplicate);
+		}
+		return jo.toString();
+	}
+
+	public static String toJSONString(List bean, boolean removeDuplicate) {
+		JSONArray jo = new JSONArray();
+		Map keyValuePairs= new HashMap<>();
+		for(Object obj:bean) {
+			JSONObject js = JSONObject.fromObject(obj);
+			if(removeDuplicate) {
+				if(keyValuePairs.get(js.toString())==null) {
+					jo.add(js);
+					keyValuePairs.put(js.toString(),js.toString());
+				}
+			}else {
+				jo.add(js);
+			}
+		}
+
+		return jo.toString();
+	}
+
+	/**
+	 *
+	 * @param list
+	 * @param fields fields to be included
+	 * @return String
+	 */
+	public static String toJSONString(List list, String[] fields) {
+		JSONArray jo = new JSONArray();
+		if(fields!=null && fields.length!=0) {
+			for (String field : fields) {
+				for(Object obj:list) {
+					JSONObject js = new JSONObject();
+					String valueGetter = "get"+ field.substring(0, 1).toUpperCase()	+ field.substring(1);
+					Object value = "";
+					try {
+						value=obj.getClass().getDeclaredMethod(valueGetter).invoke(obj);
+					} catch (Exception e) {
+						logger.error(e.getMessage());
+					}
+					js.put(field, value);
+
+					jo.add(js);
+				}
+			}
+		}else {
+			return toJSONString(list);
+		}
+		return jo.toString();
+	}
 	/**
 	 * Convert partial properties of Java Bean to JSON
 	 *
@@ -77,20 +219,46 @@ public class JsonUtils {
 	 * @return String
 	 * @throws Exception
 	 */
-	public static String toJSONString(Object bean, String[] fields) throws Exception {
+	public static String toJSONString(Object bean, String[] fields,boolean removeDuplicate) {
 		JSONObject jo = new JSONObject();
 		if (fields != null && fields.length != 0) {
 			for (String field : fields) {
 				if (bean instanceof java.util.HashMap) {
 					jo.put(field, ((java.util.HashMap) bean).get(field));
+				}if(bean instanceof java.util.List) {
+					return toJSONString((List)bean,fields,removeDuplicate);
 				} else {
 					String valueGetter = "get"+ field.substring(0, 1).toUpperCase()	+ field.substring(1);
-					jo.put(field, bean.getClass().getDeclaredMethod(valueGetter).invoke(bean));
+					Object value = "";
+					try {
+						value=bean.getClass().getDeclaredMethod(valueGetter).invoke(bean);
+					} catch (Exception e) {
+						logger.error(e.getMessage());
+					}
+					jo.put(field, value);
 				}
 			}
 			return toJSONString(jo);
 		} else {
-			return toJSONString(bean);
+			return toJSONString(bean,removeDuplicate);
+		}
+	}
+
+	public static String toJSONString(Object bean, boolean removeDuplicate) {
+		if(bean==null) {
+			return null;
+		}
+		if (bean instanceof java.util.HashMap) {
+			JSONObject jo = new JSONObject();
+			Iterator it =((Map)bean).keySet().iterator();
+			while(it.hasNext()) {
+				jo.put(it.next(), ((java.util.HashMap) bean).get(it.next()));
+			}
+			return jo.toString();
+		}if(bean instanceof java.util.List) {
+			return toJSONString((List)bean,null,removeDuplicate);
+		} else {
+			return JSONObject.fromObject(bean).toString();
 		}
 	}
 
@@ -103,7 +271,19 @@ public class JsonUtils {
 	 * @return String
 	 */
 	public static String toJSONString(Object bean, JsonConfig jsonConfig) {
-		return JSONArray.fromObject(bean, jsonConfig).toString();
+		return JSONObject.fromObject(bean, jsonConfig).toString();
+	}
+
+	/**
+	 * Convert Object to JSON with JsonConfig
+	 *
+	 * @param bean
+	 *            Java Bean
+	 * @param JsonConfig jsonConfig
+	 * @return String
+	 */
+	public static String toJSONString(List list, JsonConfig jsonConfig) {
+		return JSONArray.fromObject(list, jsonConfig).toString();
 	}
 
 	/**
@@ -116,34 +296,34 @@ public class JsonUtils {
 	 * @return String
 	 */
 	public static String toJSONStringIgnoreFields(Object bean, String[] fields) {
+		if(bean instanceof List) {
+			return toJSONStringIgnoreFields((List) bean, fields);
+		}
 		JsonConfig jsonConfig = new JsonConfig();
 		jsonConfig.setIgnoreDefaultExcludes(false);
 		jsonConfig.setCycleDetectionStrategy(CycleDetectionStrategy.LENIENT);
 		jsonConfig.setExcludes(fields);
-		return JSONArray.fromObject(bean, jsonConfig).toString();
+		return JSONObject.fromObject(bean, jsonConfig).toString();
 	}
 
-	/***
-	 * Convert Object to JSONArray
+	/**
+	 * Convert partial properties of Java Bean to JSON
 	 *
-	 * @param object
-	 * @return List
+	 * @param bean
+	 *            Java Bean
+	 * @param fields
+	 *            properties to be ignored
+	 * @return String
 	 */
-	public static List toArrayList(Object object) {
-		List arrayList = new ArrayList();
-		JSONArray jsonArray = JSONArray.fromObject(object);
-		Iterator it = jsonArray.iterator();
-		while (it.hasNext()) {
-			JSONObject jsonObject = (JSONObject) it.next();
-			Iterator keys = jsonObject.keys();
-			while (keys.hasNext()) {
-				Object key = keys.next();
-				Object value = jsonObject.get(key);
-				arrayList.add(value);
-			}
-		}
-		return arrayList;
+	public static String toJSONStringIgnoreFields(List list, String[] fields) {
+		JsonConfig jsonConfig = new JsonConfig();
+		jsonConfig.setIgnoreDefaultExcludes(false);
+		jsonConfig.setCycleDetectionStrategy(CycleDetectionStrategy.LENIENT);
+		jsonConfig.setExcludes(fields);
+		return JSONArray.fromObject(list, jsonConfig).toString();
 	}
+
+
 
 	/***
 	 * Convert Object to Collection
@@ -155,6 +335,7 @@ public class JsonUtils {
 		JSONArray jsonArray = JSONArray.fromObject(object);
 		return JSONArray.toCollection(jsonArray);
 	}
+
 
 	/***
 	 * Convert Object to Collection
@@ -180,6 +361,10 @@ public class JsonUtils {
 		return JSONArray.fromObject(object);
 	}
 
+	public static JSONArray toJSONArray(String jsonString,JsonConfig jsonConfig) {
+		return JSONArray.fromObject(jsonString, jsonConfig);
+	}
+
 	/**
      * Convert List to JSONArray
      * @param list
@@ -189,6 +374,15 @@ public class JsonUtils {
         return JSONArray.fromObject(list);
     }
 
+    /**
+     *
+     * @param String jsonString
+     * @return
+     */
+    public static JSONArray toJSONArray(String json) {
+        return JSONArray.fromObject(json);
+    }
+
 	/***
 	 * Convert Object to JSONObject
 	 *
@@ -196,15 +390,26 @@ public class JsonUtils {
 	 * @return JSONObject
 	 */
 	public static JSONObject toJSONObject(Object object) {
-		JsonConfig jsonConfig = new JsonConfig();
-		PropertyFilter filter = new PropertyFilter() {
-			@Override
-			public boolean apply(Object object, String fieldName,
-					Object fieldValue) {
-				return null == fieldValue;
-			}
-		};
-		jsonConfig.setJsonPropertyFilter(filter);
+		JSONObject jsonobj = JSONObject.fromObject(object);
+		return jsonobj;
+	}
+
+	/***
+	 * Convert Object to JSONObject
+	 *
+	 * @param object
+	 * @return JSONObject
+	 */
+	public static JSONObject toJSONObject(Object object,JsonConfig jsonConfig) {
+		/** in case to filter the null properties,open the piece of code
+			PropertyFilter filter = new PropertyFilter() {
+				@Override
+				public boolean apply(Object object, String fieldName,Object fieldValue) {
+					return null == fieldValue;
+				}
+			};
+			jsonConfig.setJsonPropertyFilter(filter);
+		*/
 		JSONObject jsonobj = JSONObject.fromObject(object, jsonConfig);
 		return jsonobj;
 	}
@@ -234,14 +439,14 @@ public class JsonUtils {
      * @return List<Map>
      */
 	public static List<?> toMap(List list) {
-		List<Map> resultList = new ArrayList<>();
+		List<Map> resultList = new ArrayList<Map>();
 
 		JSONArray jsonArray = JSONArray.fromObject(list);
 		Iterator it = jsonArray.iterator();
 		while (it.hasNext()) {
 			JSONObject jsonObject = (JSONObject) it.next();
 			Iterator keys = jsonObject.keys();
-			Map map = new HashMap<>();
+			Map map = new HashMap<Object, Object>();
 			while (keys.hasNext()) {
 				Object key = keys.next();
 				Object value = jsonObject.get(key);
@@ -276,6 +481,50 @@ public class JsonUtils {
 	}
 
 	/***
+	 * Convert Object to JSONArray
+	 *
+	 * @param object
+	 * @return List
+	 */
+	public static List toArrayList(Object object) {
+		List arrayList = new ArrayList();
+		JSONArray jsonArray = JSONArray.fromObject(object);
+		Iterator it = jsonArray.iterator();
+		while (it.hasNext()) {
+			JSONObject jsonObject = (JSONObject) it.next();
+			Iterator keys = jsonObject.keys();
+			while (keys.hasNext()) {
+				Object key = keys.next();
+				Object value = jsonObject.get(key);
+				arrayList.add(value);
+			}
+		}
+		return arrayList;
+	}
+
+	/***
+	 * Convert Object to JSONArray
+	 *
+	 * @param object
+	 * @return List
+	 */
+	public static List toList(Object object,JsonConfig jsonConfig) {
+		List arrayList = new ArrayList();
+		JSONArray jsonArray = JSONArray.fromObject(object,jsonConfig);
+		Iterator it = jsonArray.iterator();
+		while (it.hasNext()) {
+			JSONObject jsonObject = (JSONObject) it.next();
+			Iterator keys = jsonObject.keys();
+			while (keys.hasNext()) {
+				Object key = keys.next();
+				Object value = jsonObject.get(key);
+				arrayList.add(value);
+			}
+		}
+		return arrayList;
+	}
+
+	/***
 	 * Convert JSONArray to ArrayList
 	 *
 	 * @param
@@ -300,6 +549,7 @@ public class JsonUtils {
 		return JSONArray.toList(jsonArray, objectClass);
 	}
 
+
 	/***
 	 * Convert jsonString to ArrayList
 	 *
@@ -311,6 +561,7 @@ public class JsonUtils {
 		JSONArray jsonArray = JSONArray.fromObject(jsonString);
 		return JSONArray.toList(jsonArray, objectClass);
 	}
+
 
 	/***
 	 * Convert JSONObject to Object
@@ -352,8 +603,7 @@ public class JsonUtils {
 	 *            Detail class
 	 * @return T
 	 */
-	public static <T, D> T toBean(String jsonString, Class<T> mainClass,
-			String detailName, Class<D> detailClass) throws Exception {
+	public static <T, D> T toBean(String jsonString, Class<T> mainClass,String detailName, Class<D> detailClass) throws Exception {
 		JSONObject jsonObject = JSONObject.fromObject(jsonString);
 		JSONArray jsonArray = (JSONArray) jsonObject.get(detailName);
 
@@ -361,7 +611,6 @@ public class JsonUtils {
 		List<D> detailList = toList(jsonArray, detailClass);
 
 		BeanUtils.setProperty(mainEntity, detailName, detailList);
-
 		return mainEntity;
 	}
 
@@ -383,9 +632,7 @@ public class JsonUtils {
 	 *            Detail class
 	 * @return T
 	 */
-	public static <T, D1, D2> T toBean(String jsonString, Class<T> mainClass,
-			String detailName1, Class<D1> detailClass1, String detailName2,
-			Class<D2> detailClass2) throws Exception {
+	public static <T, D1, D2> T toBean(String jsonString, Class<T> mainClass,String detailName1, Class<D1> detailClass1, String detailName2,Class<D2> detailClass2) throws Exception {
 		JSONObject jsonObject = JSONObject.fromObject(jsonString);
 		JSONArray jsonArray1 = (JSONArray) jsonObject.get(detailName1);
 		JSONArray jsonArray2 = (JSONArray) jsonObject.get(detailName2);
@@ -422,10 +669,7 @@ public class JsonUtils {
 	 *            Detail class
 	 * @return T
 	 */
-	public static <T, D1, D2, D3> T toBean(String jsonString,
-			Class<T> mainClass, String detailName1, Class<D1> detailClass1,
-			String detailName2, Class<D2> detailClass2, String detailName3,
-			Class<D3> detailClass3) throws Exception{
+	public static <T, D1, D2, D3> T toBean(String jsonString,Class<T> mainClass, String detailName1, Class<D1> detailClass1,String detailName2, Class<D2> detailClass2, String detailName3,Class<D3> detailClass3) throws Exception{
 		JSONObject jsonObject = JSONObject.fromObject(jsonString);
 		JSONArray jsonArray1 = (JSONArray) jsonObject.get(detailName1);
 		JSONArray jsonArray2 = (JSONArray) jsonObject.get(detailName2);
@@ -465,16 +709,7 @@ public class JsonUtils {
 	}
 
 
-	/**
-	 * Convert json String to Java Bean
-	 *
-	 * @param jsonString
-	 * @param javaClass
-	 * @return javaClass
-	 */
-	public static <T> T toArrayList(String jsonString, Class<T> javaClass) {
-		return (T) JSONArray.toList(JSONArray.fromObject(jsonString), javaClass);
-	}
+
 
 	/**
 	 * Convert Java Bean to Map
@@ -485,6 +720,18 @@ public class JsonUtils {
 	 * @throws Exception
 	 */
 	public static Map<String, Object> bean2Map(Object bean) throws Exception{
+		return toMap(bean, new JsonConfig());
+	}
+
+	/**
+	 * Convert Java Bean to Map
+	 *
+	 * @param Map
+	 *            <String,Object>
+	 * @return Map<String, Object>
+	 * @throws Exception
+	 */
+	public static Map<String, Object> toMap(Object bean,JsonConfig jsonConfig) throws Exception{
 		Map<String, Object> map = new HashMap<String, Object>();
 		BeanInfo b = Introspector
 				.getBeanInfo(bean.getClass(), Object.class);
@@ -493,7 +740,12 @@ public class JsonUtils {
 			String propertyName = pd.getName();
 			Method m = pd.getReadMethod();
 			Object properValue = m.invoke(bean);
-			map.put(propertyName, properValue);
+			if(properValue instanceof List) {
+				map.put(propertyName, toJSONString((List)properValue,jsonConfig));
+			}else {
+				map.put(propertyName, properValue);
+			}
+
 		}
 		return map;
 	}
@@ -508,13 +760,23 @@ public class JsonUtils {
 	 * @return T
 	 * @throws Exception
 	 */
-	public static <T> T map2Bean(Map<String, Object> map, Class<T> clazz) throws Exception{
+	public static <T> T toBean(Map<String, Object> map, Class<T> clazz) throws Exception{
 		T obj = clazz.newInstance();
 		BeanInfo b = Introspector.getBeanInfo(clazz, Object.class);
 		PropertyDescriptor[] pds = b.getPropertyDescriptors();
 		for (PropertyDescriptor pd : pds) {
 			Method setter = pd.getWriteMethod();
-			setter.invoke(obj, map.get(pd.getName()));
+			Type[] types=setter.getGenericParameterTypes();
+			if(types!=null && types.length>0) {
+				String type=types[0].getTypeName();
+				if(type.contains("java.util.List") || type.contains("java.util.ArrayList")) {
+					String className = type.substring(type.indexOf("<")+1, type.indexOf(">"));
+					setter.invoke(obj, toList(map.get(pd.getName()), Class.forName(className)));
+				}else {
+					setter.invoke(obj, map.get(pd.getName()));
+				}
+			}
+
 		}
 		return obj;
 	}
@@ -588,6 +850,8 @@ public class JsonUtils {
             String value = json.get(key).toString();
             if (value.startsWith("{") && value.endsWith("}")) {
                 map.put(key, toMap(value));
+            }else if(value.startsWith("[") && value.endsWith("]")){
+            	map.put(key, toMap(toList(value)));
             } else {
                 map.put(key, value);
             }
@@ -596,12 +860,11 @@ public class JsonUtils {
         return map;
     }
     /**
-	 * Convert properties of JSONObject which is null or JSONNull to blank or
-	 * remove it
+	 * Convert properties of JSONObject which is null or JSONNull to blank
 	 *
 	 * @param jsonObj
 	 */
-	public static void filterNull(JSONObject jsonObj) {
+	public static JSONObject filterNull(JSONObject jsonObj) {
 		Iterator<String> it = jsonObj.keys();
 		Object obj = null;
 		String key = null;
@@ -617,10 +880,102 @@ public class JsonUtils {
 					filterNull(objArr.getJSONObject(i));
 				}
 			}
-			if (obj == null || obj instanceof JSONNull
-					|| "".equals(obj.toString().trim())) {
+			if (obj == null || obj instanceof JSONNull || "".equals(obj.toString().trim())) {
 					jsonObj.put(key, "");
 			}
 		}
+		return jsonObj;
 	}
+
+	/**
+	 * Convert properties of JSONObject which is null or JSONNull to blank
+	 *
+	 * @param jsonObj
+	 */
+	public static JSONObject removeNull(JSONObject jsonObj) {
+		Iterator<String> it = jsonObj.keys();
+		Object obj = null;
+		String key = null;
+		while (it.hasNext()) {
+			key = it.next();
+			obj = jsonObj.get(key);
+			if (obj instanceof JSONObject) {
+				removeNull((JSONObject) obj);
+			}
+			if (obj instanceof JSONArray) {
+				JSONArray objArr = (JSONArray) obj;
+				for (int i = 0; i < objArr.size(); i++) {
+					removeNull(objArr.getJSONObject(i));
+				}
+			}
+			if (obj == null || obj instanceof JSONNull || "".equals(obj.toString().trim())) {
+					jsonObj.remove(key);
+			}
+		}
+		return jsonObj;
+	}
+
+	/**
+	 * Convert properties of JSONObject which is null or JSONNull to blank
+	 *
+	 * @param jsonObj
+	 */
+	public static JSONArray removeNull(JSONArray jsonArray) {
+		for(int i=0;i<jsonArray.size();i++) {
+			JSONObject jsonObj = jsonArray.getJSONObject(i);
+			Iterator<String> it = jsonObj.keys();
+			Object obj = null;
+			String key = null;
+			while (it.hasNext()) {
+				key = it.next();
+				obj = jsonObj.get(key);
+				if (obj instanceof JSONObject) {
+					removeNull((JSONObject) obj);
+				}
+				if (obj instanceof JSONArray) {
+					JSONArray objArr = (JSONArray) obj;
+//					for (int j = 0; j < objArr.size(); j++) {
+//						removeNull(objArr.getJSONObject(j));
+//					}
+					removeNull(objArr);
+				}
+				if (obj == null || obj instanceof JSONNull || "".equals(obj.toString().trim())) {
+						jsonObj.remove(key);
+				}
+			}
+		}
+		return jsonArray;
+	}
+
+	/**
+	 * Convert properties of JSONObject which is null or JSONNull to blank
+	 *
+	 * @param jsonObj
+	 */
+	public static String removeNull(String jsonString) {
+		if(jsonString==null || "".equals(jsonString.trim())) {
+			return null;
+		}
+
+		JsonConfig jsonConfig = new JsonConfig();
+		PropertyFilter filter = new PropertyFilter() {
+			@Override
+			public boolean apply(Object object, String fieldName,Object fieldValue) {
+				return  fieldValue== null || fieldValue instanceof JSONNull || "".equals(fieldValue.toString().trim());
+			}
+		};
+		jsonConfig.setJsonPropertyFilter(filter);
+
+		if(jsonString.startsWith("{")&&jsonString.endsWith("}")){
+			JSONObject jsonObject=toJSONObject(jsonString,jsonConfig);
+			removeNull(jsonObject);
+			jsonString = jsonObject.toString();
+		}else if(jsonString.startsWith("[")&&jsonString.endsWith("]")) {
+			JSONArray jsonArray=toJSONArray(jsonString,jsonConfig);
+			removeNull(jsonArray);
+			jsonString = jsonArray.toString();
+		}
+		return jsonString;
+	}
+
 }
