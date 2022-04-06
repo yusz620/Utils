@@ -1,4 +1,4 @@
-package com.test.commonutil;
+package com.bs.apps.doms.common.util;
 import java.beans.BeanInfo;
 import java.beans.Introspector;
 import java.beans.PropertyDescriptor;
@@ -536,6 +536,9 @@ public class JsonUtils {
 		return JSONArray.toList(jsonArray, objectClass);
 	}
 
+
+
+
 	/***
 	 * Convert Object to ArrayList
 	 *
@@ -549,6 +552,27 @@ public class JsonUtils {
 		return JSONArray.toList(jsonArray, objectClass);
 	}
 
+	/***
+	 * Convert JSONArray to ArrayList
+	 *
+	 * @param
+	 * @param jsonArray
+	 * @param objectClass
+	 * @return List<T>
+	 */
+	public static <T,D> List<T> toList(String jsonArray, Class<T> mainClass,String detailName, Class<D> detailClass) throws Exception{
+		List<T> list=new ArrayList<>();
+		JSONArray jsonArrayObject=  JSONArray.fromObject(jsonArray);
+		for(int i=0;i<jsonArrayObject.size();i++) {
+			JSONObject obj = jsonArrayObject.getJSONObject(i);
+			T mainEntity = toBean(obj, mainClass);
+			List<D> detaiList = toList((JSONArray) obj.get(detailName), detailClass);
+			BeanUtils.setProperty(mainEntity, detailName, detaiList);
+			list.add(mainEntity);
+		}
+
+		return list;
+	}
 
 	/***
 	 * Convert jsonString to ArrayList
@@ -613,6 +637,7 @@ public class JsonUtils {
 		BeanUtils.setProperty(mainEntity, detailName, detailList);
 		return mainEntity;
 	}
+
 
 	/***
 	 * Convert JSON String to Java Bean,and set the detail List to the main form
